@@ -1,27 +1,31 @@
-// Service Worker - 缓存静态资源，加速二次访问
-const CACHE = 'quiz-app-v1'
-const ASSETS = ['/', '/index.html', '/sql-wasm.wasm']
+// Service Worker v2 - 缓存静态资源，检测更新自动刷新
+const CACHE = 'quiz-v2'
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS).catch(() => {})))
+  // 立即激活，不等待
   self.skipWaiting()
 })
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))))
+  // 清除所有旧缓存
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))))
   self.clients.claim()
+  // 通知所有页面刷新
+  self.clients.matchAll().then(clients => clients.forEach(c => c.navigate(c.url)))
 })
 
 self.addEventListener('fetch', (e) => {
+  // 对 HTML 永不缓存，始终从网络获取
+  if (e.request.destination === 'document') {
+    e.respondWith(fetch(e.request))
+    return
+  }
+  // 其他资源：网络优先，失败时用缓存
   e.respondWith(
-    caches.match(e.request).then(cached =>
-      cached || fetch(e.request).then(res => {
-        if (res.ok) {
-          const clone = res.clone()
-          caches.open(CACHE).then(c => c.put(e.request, clone))
-        }
-        return res
-      })
-    )
+    fetch(e.request).then(res => {
+      const clone = res.clone()
+      caches.open(CACHE).then(c => c.put(e.request, clone))
+      return res
+    }).catch(() => caches.match(e.request))
   )
 })

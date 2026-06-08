@@ -24,6 +24,13 @@ app.use((_req, res, next) => {
 })
 
 app.use(express.json({ limit: '50mb' }))
+// 禁止缓存（确保每次加载最新版本）
+app.use((_req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate')
+  res.set('Pragma', 'no-cache')
+  res.set('Expires', '0')
+  next()
+})
 app.use(express.static(join(__dirname, 'dist')))
 
 // PDF 解析（pdf2json 替代 pdf-parse，避免 toHex bug）
