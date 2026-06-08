@@ -1,12 +1,10 @@
 /**
- * AI 题目生成 - 直接调用 DeepSeek API（无需后端代理）
+ * AI 题目生成 - 直接调用 DeepSeek API
  */
 const KEY = 'sk-708338bd12a646b88521bd29a868b052'
 
 export async function generateQuestions(content, options = {}) {
-  const { count = 10, difficulty = '中等' } = options
-
-  // 并行分批生成
+  const { count = 10, mode = '原题' } = options
   const batchSize = 6
   const batches = []
   let r = count
@@ -19,29 +17,26 @@ export async function generateQuestions(content, options = {}) {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${KEY}` },
         body: JSON.stringify({
           model: 'deepseek-chat', max_tokens: 4096, temperature: 0.7,
-          messages: [{ role: 'user', content: buildPrompt(content, n, difficulty) }],
+          messages: [{ role: 'user', content: buildPrompt(content, n, mode) }],
         }),
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error?.message || `API ${res.status}`)
-      }
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `API ${res.status}`) }
       const data = await res.json()
       return parseQuestions(data.choices[0].message.content)
     }))
-
-    const questions = results.flatMap((qs, i) =>
-      qs.map((q, j) => ({ ...q, id: Date.now() + i * 1000 + j }))
-    )
+    const questions = results.flatMap((qs, i) => qs.map((q, j) => ({ ...q, id: Date.now() + i * 1000 + j })))
     return { success: true, questions }
   } catch (err) {
     return { success: false, error: `生成失败: ${err.message}` }
   }
 }
 
-function buildPrompt(content, count, difficulty) {
+function buildPrompt(content, count, mode) {
   const text = content.length > 8000 ? content.slice(0, 8000) : content
-  return `根据文档生成${count}道${difficulty}难度单选题。每题4选项(A/B/C/D)，1个正确答案。须有解题思路和知识点。只输出JSON：[{"topic":"题","options":["A.xx","B.xx","C.xx","D.xx"],"answer":"A","explanation":"思路","knowledgePoint":"知识点"}]文档：${text}`
+  if (mode === '原题') {
+    return `根据文档内容严格出${count}道单选题。每题4选项1个正确答案。必须有解题思路和知识点。只输出JSON：[{"topic":"题","options":["A","B","C","D"],"answer":"A","explanation":"思路","knowledgePoint":"知识点"}]文档：${text}`
+  }
+  return `根据文档知识点拓展出${count}道同类单选题。可超出原文但基于原文知识点延伸。每题4选项1个正确答案。有详细解题思路和知识点。只输出JSON：[{"topic":"题","options":["A","B","C","D"],"answer":"A","explanation":"思路","knowledgePoint":"知识点"}]文档：${text}`
 }
 
 function parseQuestions(text) {

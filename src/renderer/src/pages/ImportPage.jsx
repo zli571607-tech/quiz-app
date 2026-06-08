@@ -14,7 +14,7 @@ export default function ImportPage() {
   const [questions, setQuestions] = useState([])
   const [genError, setGenError] = useState('')
   const [questionCount, setQuestionCount] = useState(10)
-  const [difficulty, setDifficulty] = useState('中等')
+  const [mode, setMode] = useState('原题')
   const [expandedIndex, setExpandedIndex] = useState(null)
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState('')
@@ -34,7 +34,7 @@ export default function ImportPage() {
 
   const handleGenerate = async () => {
     setGenError(''); setGenerating(true); setSaved(false)
-    const result = await generateQuestions(content, { count: questionCount, difficulty })
+    const result = await generateQuestions(content, { count: questionCount, mode })
     setGenerating(false)
     if (result.success) setQuestions(result.questions)
     else setGenError(result.error)
@@ -116,17 +116,18 @@ export default function ImportPage() {
                   min="1" max="200" className="w-20 px-3 py-1.5 border border-border rounded-btn text-sm outline-none focus:border-primary" />
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-sm text-text-secondary">难度</span>
-                <select value={difficulty} onChange={e => setDifficulty(e.target.value)}
+                <span className="text-sm text-text-secondary">出题模式</span>
+                <select value={mode} onChange={e => setMode(e.target.value)}
                   className="px-3 py-1.5 border border-border rounded-btn text-sm outline-none focus:border-primary">
-                  <option>简单</option><option>中等</option><option>困难</option>
+                  <option value="原题">📝 原题（根据文档直接出题）</option>
+                  <option value="拓展">🔍 拓展（知识点延伸出题）</option>
                 </select>
               </div>
             </div>
 
             <button onClick={handleGenerate} disabled={generating}
               className="w-full bg-primary text-white py-3 rounded-btn font-medium hover:bg-primary-hover disabled:opacity-50 flex items-center justify-center gap-2">
-              {generating ? <><Loader2 size={18} className="animate-spin" />AI 正在生成题目...</> : <><Sparkles size={18} />生成 {questionCount} 道{difficulty}难度选择题</>}
+              {generating ? <><Loader2 size={18} className="animate-spin" />AI 正在生成题目...</> : <><Sparkles size={18} />{mode === '原题' ? '根据原文' : '知识点拓展'}出 {questionCount} 道题</>}
             </button>
           </div>
         </div>

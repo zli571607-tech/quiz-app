@@ -42,7 +42,7 @@ app.post('/api/parse-pdf', async (req, res) => {
 // 生成题目
 app.post('/api/generate', async (req, res) => {
   try {
-    const { content, count = 10, difficulty = '中等' } = req.body
+    const { content, count = 10, mode = '原题' } = req.body
     if (!content) return res.status(400).json({ error: '请先导入文档' })
 
     const batchSize = 6
@@ -50,7 +50,7 @@ app.post('/api/generate', async (req, res) => {
     let r = count
     while (r > 0) { batches.push(Math.min(r, batchSize)); r -= batchSize }
 
-    const results = await Promise.all(batches.map(n => generateBatch(content, n, difficulty)))
+    const results = await Promise.all(batches.map(n => generateBatch(content, n, mode)))
     const questions = results.flatMap((qs, i) => qs.map((q, j) => ({ ...q, id: Date.now() + i * 1000 + j })))
     res.json({ success: true, questions })
   } catch (err) {
@@ -59,13 +59,13 @@ app.post('/api/generate', async (req, res) => {
   }
 })
 
-async function generateBatch(content, count, difficulty) {
+async function generateBatch(content, count, mode) {
   const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${KEY}` },
     body: JSON.stringify({
       model: 'deepseek-chat', max_tokens: 4096, temperature: 0.7,
-      messages: [{ role: 'user', content: buildPrompt(content, count, difficulty) }],
+      messages: [{ role: 'user', content: buildPrompt(content, count, mode) }],
     }),
   })
   if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || `API ${res.status}`) }
@@ -109,9 +109,14 @@ app.listen(PORT, '0.0.0.0', () => {
   exec(`start http://localhost:${PORT}`)
 })
 
-function buildPrompt(content, count, difficulty) {
+function buildPrompt(content, count, mode) {
   const text = content.length > 8000 ? content.slice(0, 8000) : content
-  return `根据文档生成${count}道${difficulty}难度单选题。每题4选项(A/B/C/D)，1个正确答案。须有解题思路和知识点。只输出JSON：[{"topic":"题","options":["A","B","C","D"],"answer":"A","explanation":"思路","knowledgePoint":"知识点"}]文档：${text}`
+
+  if (mode === '原题') {
+    return `你是出题老师。请根据以下文档内容，严格按原文知识点出${count}道单选题。每题4选项，1个正确答案。每题必须包含解题思路和知识点标签。只输出JSON：[{"topic":"题目","options":["A.xx","B.xx","C.xx","D.xx"],"answer":"A","explanation":"解题思路","knowledgePoint":"知识点"}]文档：${text}`
+  } else {
+    return `你是出题老师。请根据以下文档的知识点，拓展出${count}道同类知识的单选题。题目可以超出原文但必须基于原文知识点进行延伸。每题4选项，1个正确答案。必须有详细解题思路和知识点标签。只输出JSON：[{"topic":"题目","options":["A.xx","B.xx","C.xx","D.xx"],"answer":"A","explanation":"解题思路","knowledgePoint":"知识点"}]文档：${text}`
+  }
 }
 
 function parseQuestions(text) {
