@@ -7,12 +7,11 @@
 import { extractRawText } from 'mammoth'
 import * as pdfjsLib from 'pdfjs-dist'
 import JSZip from 'jszip'
+// Vite 会把这个路径替换为构建后的哈希文件名
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url'
 
 // 设置 PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.mjs',
-  import.meta.url
-).toString()
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 
 /**
  * 从 File 对象中解析文本
@@ -72,19 +71,50 @@ async function parseTxt(file) {
  */
 async function parsePdf(file) {
   const arrayBuffer = await file.arrayBuffer()
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+
+  // 尝试多种方式加载 PDF（有些 PDF 格式特殊）
+  const loadOptions = [
+    { data: arrayBuffer },
+    { data: arrayBuffer, disableRange: true },
+    { data: arrayBuffer, disableStream: true },
+  ]
+
+  let pdf = null
+  let lastError = null
+
+  for (const opts of loadOptions) {
+    try {
+      pdf = await pdfjsLib.getDocument(opts).promise
+      break
+    } catch (e) {
+      lastError = e
+      continue
+    }
+  }
+
+  if (!pdf) {
+    throw new Error('PDF 解析失败：' + (lastError?.message || '无法读取此文件'))
+  }
 
   const textParts = []
   for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i)
-    const textContent = await page.getTextContent()
-    const pageText = textContent.items
-      .map(item => item.str)
-      .filter(str => str.trim())
-      .join(' ')
-    if (pageText) {
-      textParts.push(pageText)
+    try {
+      const page = await pdf.getPage(i)
+      const textContent = await page.getTextContent()
+      const pageText = textContent.items
+        .map(item => item.str)
+        .filter(str => str && str.trim())
+        .join(' ')
+      if (pageText.trim()) textParts.push(pageText.trim())
+    } catch (e) {
+      // 跳过无法解析的页面
+      console.warn(`PDF 第${i}页解析失败:`, e.message)
     }
+  }
+
+  if (textParts.length === 0) {
+    // 可能是扫描版 PDF（图片），尝试给出明确提示
+    throw new Error('PDF 中未找到可提取的文字。如果是扫描版PDF（图片），请先用 OCR 工具识别文字。')
   }
 
   return textParts.join('\n\n')
