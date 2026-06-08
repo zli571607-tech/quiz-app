@@ -70,53 +70,38 @@ async function parseTxt(file) {
  * 解析 PDF 文件（使用 pdfjs-dist）
  */
 async function parsePdf(file) {
-  const arrayBuffer = await file.arrayBuffer()
+  // 用 Object URL 方式加载，彻底避免 ArrayBuffer detached 问题
+  const url = URL.createObjectURL(file)
+  try {
+    const pdf = await pdfjsLib.getDocument({
+      url,
+      disableAutoFetch: true,
+      disableStream: true,
+    }).promise
 
-  let pdf = null
-  let lastError = null
-
-  // 按顺序尝试不同加载方式，每次用 Buffer 副本避免 detached 错误
-  const tryLoad = async (opts) => {
-    try {
-      const copy = arrayBuffer.slice(0) // 复制一份，避免 detached
-      const doc = await pdfjsLib.getDocument({ ...opts, data: copy }).promise
-      return doc
-    } catch (e) {
-      lastError = e
-      return null
+    const textParts = []
+    for (let i = 1; i <= pdf.numPages; i++) {
+      try {
+        const page = await pdf.getPage(i)
+        const textContent = await page.getTextContent()
+        const pageText = textContent.items
+          .map(item => item.str)
+          .filter(str => str && str.trim())
+          .join(' ')
+        if (pageText.trim()) textParts.push(pageText.trim())
+      } catch {
+        // 跳过损坏页
+      }
     }
-  }
 
-  pdf = await tryLoad({})
-  if (!pdf) pdf = await tryLoad({ disableRange: true })
-  if (!pdf) pdf = await tryLoad({ disableStream: true })
-
-  if (!pdf) {
-    throw new Error('PDF 解析失败：' + (lastError?.message || '无法读取此文件'))
-  }
-
-  const textParts = []
-  for (let i = 1; i <= pdf.numPages; i++) {
-    try {
-      const page = await pdf.getPage(i)
-      const textContent = await page.getTextContent()
-      const pageText = textContent.items
-        .map(item => item.str)
-        .filter(str => str && str.trim())
-        .join(' ')
-      if (pageText.trim()) textParts.push(pageText.trim())
-    } catch (e) {
-      // 跳过无法解析的页面
-      console.warn(`PDF 第${i}页解析失败:`, e.message)
+    if (textParts.length === 0) {
+      throw new Error('PDF 中未找到可提取的文字（可能是扫描版图片PDF）')
     }
-  }
 
-  if (textParts.length === 0) {
-    // 可能是扫描版 PDF（图片），尝试给出明确提示
-    throw new Error('PDF 中未找到可提取的文字。如果是扫描版PDF（图片），请先用 OCR 工具识别文字。')
+    return textParts.join('\n\n')
+  } finally {
+    URL.revokeObjectURL(url)
   }
-
-  return textParts.join('\n\n')
 }
 
 /**
