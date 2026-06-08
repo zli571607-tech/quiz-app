@@ -72,25 +72,24 @@ async function parseTxt(file) {
 async function parsePdf(file) {
   const arrayBuffer = await file.arrayBuffer()
 
-  // 尝试多种方式加载 PDF（有些 PDF 格式特殊）
-  const loadOptions = [
-    { data: arrayBuffer },
-    { data: arrayBuffer, disableRange: true },
-    { data: arrayBuffer, disableStream: true },
-  ]
-
   let pdf = null
   let lastError = null
 
-  for (const opts of loadOptions) {
+  // 按顺序尝试不同加载方式，每次用 Buffer 副本避免 detached 错误
+  const tryLoad = async (opts) => {
     try {
-      pdf = await pdfjsLib.getDocument(opts).promise
-      break
+      const copy = arrayBuffer.slice(0) // 复制一份，避免 detached
+      const doc = await pdfjsLib.getDocument({ ...opts, data: copy }).promise
+      return doc
     } catch (e) {
       lastError = e
-      continue
+      return null
     }
   }
+
+  pdf = await tryLoad({})
+  if (!pdf) pdf = await tryLoad({ disableRange: true })
+  if (!pdf) pdf = await tryLoad({ disableStream: true })
 
   if (!pdf) {
     throw new Error('PDF 解析失败：' + (lastError?.message || '无法读取此文件'))
