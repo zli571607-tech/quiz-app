@@ -68,70 +68,179 @@ function HomePage() {
   </div>)
 }
 
-// ============ 备份组件 ============
+// ============ 备份组件（Word 文档） ============
 function BackupSection() {
-  const [show, setShow] = useState(null) // null | 'export' | 'import'
-  const [data, setData] = useState('')
   const [msg, setMsg] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const getData = () => {
-    const obj = {}
-    for (let i = 0; i < localStorage.length; i++) obj[localStorage.key(i)] = localStorage.getItem(localStorage.key(i))
-    return JSON.stringify(obj, null, 2)
+  const doExport = async () => {
+    setLoading(true)
+    try {
+      const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle } = await import('docx')
+
+      // 读取所有题目
+      const dbModule = await import('./utils/database')
+      const questions = dbModule.getAllQuestions()
+
+      if (questions.length === 0) { alert('题库为空，请先生成题目'); setLoading(false); return }
+
+      // 构建 Word 文档
+      const children = [
+        new Paragraph({ children: [new TextRun({ text: '刷题软件 - 题库导出', bold: true, size: 32 })], spacing: { after: 200 } }),
+        new Paragraph({ children: [new TextRun({ text: `导出日期：${new Date().toLocaleDateString('zh-CN')}  共 ${questions.length} 题`, size: 20, color: '666666' })], spacing: { after: 400 } }),
+      ]
+
+      questions.forEach((q, idx) => {
+        // 题目标题
+        children.push(new Paragraph({
+          children: [new TextRun({ text: `${idx + 1}. ${q.topic}`, bold: true, size: 22 })],
+          spacing: { before: 300, after: 100 },
+        }))
+        // 选项
+        const optLabels = ['A', 'B', 'C', 'D']
+        q.options.forEach((opt, i) => {
+          const isAnswer = optLabels[i] === q.answer
+          children.push(new Paragraph({
+            children: [new TextRun({ text: `    ${optLabels[i]}. ${opt}`, size: 20, color: isAnswer ? '008000' : '333333', bold: isAnswer })],
+            spacing: { after: 50 },
+          }))
+        })
+        // 答案
+        children.push(new Paragraph({
+          children: [new TextRun({ text: `    正确答案：${q.answer}`, size: 18, color: '008000', italics: true })],
+          spacing: { after: 50 },
+        }))
+        // 解题思路
+        if (q.explanation) {
+          children.push(new Paragraph({
+            children: [new TextRun({ text: `    解题思路：${q.explanation}`, size: 18, color: '666666' })],
+            spacing: { after: 50 },
+          }))
+        }
+        // 知识点
+        if (q.knowledge_point) {
+          children.push(new Paragraph({
+            children: [new TextRun({ text: `    知识点：${q.knowledge_point}`, size: 18, color: '3366CC' })],
+            spacing: { after: 50 },
+          }))
+        }
+      })
+
+      const doc = new Document({
+        sections: [{
+          properties: {},
+          children,
+        }],
+      })
+
+      const blob = await Packer.toBlob(doc)
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `题库_${new Date().toLocaleDateString('zh-CN')}.docx`
+      a.click()
+      setMsg('✅ 题库已导出为 Word 文档！')
+    } catch (e) {
+      setMsg('导出失败：' + e.message)
+    }
+    setLoading(false)
+    setTimeout(() => setMsg(''), 3000)
   }
 
-  if (show === 'export') return (
-    <div className="bg-card border border-border rounded-card p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium">📤 导出题库</h3>
-        <button onClick={() => setShow(null)} className="text-xs text-text-secondary">关闭</button>
-      </div>
-      <textarea readOnly value={data} onClick={e => e.target.select()} className="w-full h-40 p-3 border border-border rounded-btn text-xs font-mono resize-none bg-white mb-3" />
-      <div className="flex flex-wrap gap-2">
-        <button onClick={async () => { try { await navigator.clipboard.writeText(data); setMsg('✅ 已复制！可粘贴发送到另一台设备'); setTimeout(() => setMsg(''), 3000) } catch { setMsg('复制失败请手动全选'); setTimeout(() => setMsg(''), 3000) } }} className="bg-primary text-white px-4 py-2 rounded-btn text-sm">📋 一键复制</button>
-        <button onClick={() => { const b = new Blob([data], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `题库备份_${new Date().toLocaleDateString()}.json`; a.click() }} className="bg-white border px-4 py-2 rounded-btn text-sm">📥 下载文件</button>
-      </div>
-      {msg && <p className="text-xs text-correct mt-2">{msg}</p>}
-    </div>
-  )
+  const doImport = async (file) => {
+    if (!file) return
+    setLoading(true)
+    setMsg('')
+    try {
+      const arrayBuffer = await file.arrayBuffer()
+      const mammoth = await import('mammoth')
+      const result = await mammoth.extractRawText({ arrayBuffer })
+      const text = result.value
 
-  if (show === 'import') return (
-    <div className="bg-card border border-border rounded-card p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium">📥 导入题库</h3>
-        <button onClick={() => { setShow(null); setData('') }} className="text-xs text-text-secondary">关闭</button>
-      </div>
-      <textarea value={data} onChange={e => setData(e.target.value)} placeholder="把从另一台设备复制的备份数据粘贴到这里..." className="w-full h-40 p-3 border border-border rounded-btn text-xs font-mono resize-none bg-white mb-3" />
-      <div className="flex flex-wrap gap-2">
-        <button onClick={() => {
-          if (!data.trim()) { setMsg('请先粘贴数据'); return }
-          try {
-            const obj = JSON.parse(data)
-            if (!obj || !Object.keys(obj).length) { setMsg('数据为空'); return }
-            if (!confirm(`导入 ${Object.keys(obj).length} 条记录，覆盖当前数据？`)) return
-            Object.entries(obj).forEach(([k, v]) => { if (typeof v === 'string') localStorage.setItem(k, v) })
-            alert('导入成功！正在刷新...')
-            window.location.reload()
-          } catch { setMsg('格式错误，请确保完整复制'); setTimeout(() => setMsg(''), 3000) }
-        }} className="bg-correct text-white px-4 py-2 rounded-btn text-sm">✅ 确认导入</button>
-        <label className="bg-white border px-4 py-2 rounded-btn text-sm cursor-pointer">📂 选择文件导入
-          <input type="file" accept=".json" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setData(r.result); r.readAsText(f) }} />
-        </label>
-      </div>
-      {msg && <p className="text-xs text-wrong mt-2">{msg}</p>}
-    </div>
-  )
+      if (!text.trim()) { setMsg('Word 文档为空，无法导入'); setLoading(false); return }
+
+      // 尝试解析题目
+      const questions = parseQuestionsFromText(text)
+
+      if (questions.length === 0) {
+        // 如果不是题库格式，就当作普通文档导入（只存文本，让用户自己处理）
+        setMsg('未识别到题目格式。请使用"导出题库"生成的 Word 文件导入。')
+        setLoading(false)
+        return
+      }
+
+      if (!confirm(`识别到 ${questions.length} 道题目，将添加到当前题库，确定？`)) { setLoading(false); return }
+
+      const dbModule = await import('./utils/database')
+      for (const q of questions) {
+        dbModule.addQuestion(q.topic, q.options, q.answer, null, file.name, q.explanation || '', q.knowledgePoint || '')
+      }
+
+      setMsg(`✅ 成功导入 ${questions.length} 道题目！`)
+      // 触发刷新
+      setTimeout(() => window.location.reload(), 1500)
+    } catch (e) {
+      setMsg('导入失败：' + e.message)
+    }
+    setLoading(false)
+  }
 
   return (
     <div className="bg-card border border-border rounded-card p-4">
-      <h3 className="text-sm font-medium mb-3">💾 题库同步（手机 ↔ 电脑）</h3>
-      <p className="text-xs text-text-secondary mb-3">导出 → 复制文字 → 发到另一台设备 → 粘贴导入</p>
-      <div className="flex gap-2">
-        <button onClick={() => { setData(getData()); setShow('export') }} className="bg-primary text-white px-4 py-2 rounded-btn text-sm">📤 导出题库</button>
-        <button onClick={() => { setData(''); setShow('import'); setMsg('') }} className="bg-correct text-white px-4 py-2 rounded-btn text-sm">📥 导入题库</button>
+      <h3 className="text-sm font-medium mb-3">📄 题库备份（Word 文档）</h3>
+      <p className="text-xs text-text-secondary mb-3">导出为 Word(.docx) 文件 → 发送到另一台设备 → 导入</p>
+      <div className="flex flex-wrap gap-2">
+        <button onClick={doExport} disabled={loading} className="bg-primary text-white px-4 py-2 rounded-btn text-sm disabled:opacity-50">
+          {loading ? '处理中...' : '📤 导出 Word'}
+        </button>
+        <label className="bg-correct text-white px-4 py-2 rounded-btn text-sm cursor-pointer hover:bg-green-600 disabled:opacity-50">
+          📥 导入 Word
+          <input type="file" accept=".docx" className="hidden" disabled={loading} onChange={e => { const f = e.target.files?.[0]; if (f) doImport(f); e.target.value = '' }} />
+        </label>
       </div>
+      {msg && <p className={`text-xs mt-2 ${msg.startsWith('✅') ? 'text-correct' : 'text-wrong'}`}>{msg}</p>}
     </div>
   )
+}
+
+// 从文本解析题目
+function parseQuestionsFromText(text) {
+  const questions = []
+  // 匹配题目编号：数字 + 点 + 内容
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
+
+  let current = null
+  for (const line of lines) {
+    // 匹配 "1. 题目内容" 或 "1、题目内容"
+    const topicMatch = line.match(/^(\d+)[\.、\s]+(.+)/)
+    if (topicMatch && !line.startsWith('    ') && topicMatch[1].length <= 3) {
+      if (current && current.topic) questions.push(current)
+      current = { topic: topicMatch[2].trim(), options: [], answer: '', explanation: '', knowledgePoint: '' }
+      continue
+    }
+    if (!current) continue
+
+    // 匹配选项 A. B. C. D.
+    const optMatch = line.match(/^\s*([A-D])[\.\、\s]+(.+)/)
+    if (optMatch && optMatch[2].length > 1) {
+      current.options.push(optMatch[2].trim())
+      continue
+    }
+
+    // 匹配正确答案
+    const ansMatch = line.match(/正确答案[：:]\s*([A-D])/i)
+    if (ansMatch) { current.answer = ansMatch[1].toUpperCase(); continue }
+
+    // 匹配解题思路
+    const expMatch = line.match(/解题思路[：:]\s*(.+)/)
+    if (expMatch) { current.explanation = expMatch[1].trim(); continue }
+
+    // 匹配知识点
+    const kpMatch = line.match(/知识点[：:]\s*(.+)/)
+    if (kpMatch) { current.knowledgePoint = kpMatch[1].trim(); continue }
+  }
+  if (current && current.topic) questions.push(current)
+
+  return questions.filter(q => q.options.length >= 2 && q.answer)
 }
 
 function AppContent() {
