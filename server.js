@@ -18,6 +18,21 @@ app.use((_req, res, next) => {
 app.use(express.json({ limit: '50mb' }))
 app.use(express.static(join(__dirname, 'dist')))
 
+// PDF 解析
+app.post('/api/parse-pdf', async (req, res) => {
+  try {
+    const pdfParse = (await import('pdf-parse')).default
+    const chunks = []
+    req.on('data', c => chunks.push(c))
+    req.on('end', async () => {
+      const data = await pdfParse(Buffer.concat(chunks))
+      res.json({ success: true, content: data.text })
+    })
+  } catch (e) {
+    res.status(500).json({ error: 'PDF解析失败: ' + e.message })
+  }
+})
+
 // 生成题目
 app.post('/api/generate', async (req, res) => {
   try {

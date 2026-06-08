@@ -24,6 +24,30 @@ export default function apiPlugin() {
         res.end(JSON.stringify({ ok: true }))
       })
 
+      // PDF 解析（服务端 pdf-parse，稳定可靠）
+      server.middlewares.use('/api/parse-pdf', async (req, res) => {
+        if (req.method !== 'POST') { res.writeHead(405); res.end(); return }
+        try {
+          const chunks = []
+          req.on('data', c => chunks.push(c))
+          req.on('end', async () => {
+            try {
+              const buffer = Buffer.concat(chunks)
+              const pdfParse = (await import('pdf-parse')).default
+              const data = await pdfParse(buffer)
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ success: true, content: data.text }))
+            } catch (e) {
+              res.writeHead(500, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ error: 'PDF解析失败: ' + e.message }))
+            }
+          })
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: err.message }))
+        }
+      })
+
       server.middlewares.use('/api/generate', async (req, res) => {
         if (req.method !== 'POST') { res.writeHead(405); res.end(); return }
         try {
