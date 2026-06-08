@@ -14,11 +14,10 @@ const DB_STORAGE_KEY = 'quiz_app_db'
 export async function initDatabase() {
   if (db) return db
 
-  // 用页面根目录的相对路径加载 WASM（适配任何子目录部署）
+  // 加载 sql.js WASM（文件名必须匹配 sql.js 期望的 sql-wasm-browser.wasm）
   try {
-    const wasmPath = import.meta.env.BASE_URL + 'sql-wasm.wasm'
     SQL = await initSqlJs({
-      locateFile: () => wasmPath,
+      locateFile: (file) => import.meta.env.BASE_URL + 'sql-wasm-browser.wasm',
     })
   } catch (err) {
     console.error('sql.js 初始化失败:', err)
