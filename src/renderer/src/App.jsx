@@ -128,47 +128,92 @@ function HomePage() {
 
       {/* 数据备份 */}
       <div className="bg-card border border-border rounded-card p-4">
-        <h3 className="text-sm font-medium mb-3">💾 数据备份</h3>
-        <p className="text-xs text-text-secondary mb-3">导出的文件可在另一台设备（手机/电脑）导入，恢复全部题库和记录</p>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => {
-            // 正确读取 localStorage 所有数据
-            const data = {}
-            for (let i = 0; i < localStorage.length; i++) {
-              const key = localStorage.key(i)
-              data[key] = localStorage.getItem(key)
-            }
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-            const a = document.createElement('a')
-            a.href = URL.createObjectURL(blob)
-            a.download = `刷题软件备份_${new Date().toLocaleDateString('zh-CN')}.json`
-            a.click()
-          }} className="bg-white border border-border px-4 py-2 rounded-btn text-sm hover:bg-gray-50 transition-colors">
-            📤 导出备份
-          </button>
-          <label className="bg-white border border-border px-4 py-2 rounded-btn text-sm hover:bg-gray-50 transition-colors cursor-pointer">
-            📥 导入备份
-            <input type="file" accept=".json" className="hidden" onChange={(e) => {
-              const f = e.target.files?.[0]
-              if (!f) return
-              const reader = new FileReader()
-              reader.onload = () => {
-                try {
-                  const data = JSON.parse(reader.result)
-                  if (typeof data !== 'object' || !data) { alert('备份文件格式错误'); return }
-                  if (confirm(`导入将覆盖当前 ${localStorage.length} 条数据，确定继续？`)) {
-                    Object.entries(data).forEach(([k, v]) => {
-                      if (typeof v === 'string') localStorage.setItem(k, v)
-                    })
-                    alert('导入成功！即将刷新页面')
-                    window.location.reload()
-                  }
-                } catch { alert('备份文件格式错误，无法解析') }
+        <h3 className="text-sm font-medium mb-3">💾 题库同步（手机 ↔ 电脑）</h3>
+        <p className="text-xs text-text-secondary mb-3">把一台设备的题库传到另一台设备</p>
+
+        {/* 导出区域 */}
+        <div className="mb-3 p-3 bg-blue-50 rounded-btn">
+          <p className="text-xs font-medium mb-2">📤 从这台设备导出</p>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => {
+              const data = {}
+              for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i)
+                data[key] = localStorage.getItem(key)
               }
-              reader.readAsText(f)
-              e.target.value = ''
-            }} />
-          </label>
+              // 下载文件
+              const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+              const a = document.createElement('a')
+              a.href = URL.createObjectURL(blob)
+              a.download = `刷题软件备份_${new Date().toLocaleDateString('zh-CN')}.json`
+              a.click()
+            }} className="bg-white border border-border px-3 py-1.5 rounded-btn text-xs hover:bg-gray-50">
+              📥 下载备份文件
+            </button>
+            <button onClick={async () => {
+              const data = {}
+              for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i)
+                data[key] = localStorage.getItem(key)
+              }
+              try {
+                await navigator.clipboard.writeText(JSON.stringify(data))
+                alert('已复制！发送给另一台设备，在那台设备上点"粘贴导入"即可')
+              } catch {
+                alert('复制失败，请用"下载备份文件"方式')
+              }
+            }} className="bg-primary text-white px-3 py-1.5 rounded-btn text-xs hover:bg-primary-hover">
+              📋 复制到剪贴板
+            </button>
+          </div>
+        </div>
+
+        {/* 导入区域 */}
+        <div className="p-3 bg-green-50 rounded-btn">
+          <p className="text-xs font-medium mb-2">📥 导入到这台设备</p>
+          <div className="flex flex-wrap gap-2 mb-2">
+            <label className="bg-white border border-border px-3 py-1.5 rounded-btn text-xs hover:bg-gray-50 cursor-pointer">
+              📂 选择备份文件
+              <input type="file" accept=".json" className="hidden" onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (!f) return
+                const reader = new FileReader()
+                reader.onload = () => {
+                  try {
+                    const data = JSON.parse(reader.result)
+                    if (typeof data !== 'object' || !data) { alert('文件格式错误'); return }
+                    if (confirm(`导入将覆盖当前数据，确定？`)) {
+                      Object.entries(data).forEach(([k, v]) => {
+                        if (typeof v === 'string') localStorage.setItem(k, v)
+                      })
+                      alert('导入成功！刷新中...')
+                      window.location.reload()
+                    }
+                  } catch { alert('文件格式错误') }
+                }
+                reader.readAsText(f)
+                e.target.value = ''
+              }} />
+            </label>
+            <button onClick={() => {
+              const text = prompt('请粘贴从另一台设备复制的备份数据：')
+              if (!text) return
+              try {
+                const data = JSON.parse(text)
+                if (typeof data !== 'object' || !data) { alert('格式错误'); return }
+                if (confirm(`导入将覆盖当前数据，确定？`)) {
+                  Object.entries(data).forEach(([k, v]) => {
+                    if (typeof v === 'string') localStorage.setItem(k, v)
+                  })
+                  alert('导入成功！刷新中...')
+                  window.location.reload()
+                }
+              } catch { alert('数据格式错误，请检查是否完整复制') }
+            }} className="bg-correct text-white px-3 py-1.5 rounded-btn text-xs hover:bg-green-600">
+              📋 粘贴导入
+            </button>
+          </div>
+          <p className="text-xs text-text-secondary">另一台设备点"复制到剪贴板" → 微信/QQ发送 → 这台设备点"粘贴导入"</p>
         </div>
       </div>
     </div>
