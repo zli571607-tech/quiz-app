@@ -44,7 +44,7 @@ function Sidebar({ mobileOpen, onClose }) {
         return (<NavLink key={path} to={path} onClick={onClose} className={`flex items-center gap-3 px-3 py-2.5 rounded-btn text-sm font-medium transition-colors ${isActive ? 'bg-primary text-white shadow-sm' : 'text-text-secondary hover:bg-white hover:text-text-primary'}`}><Icon size={18} />{label}</NavLink>)
       })}
     </nav>
-    <div className="px-5 py-4 border-t border-border mt-auto"><p className="text-xs text-text-secondary">v1.0.0</p></div>
+    <div className="px-5 py-4 border-t border-border mt-auto"><p className="text-xs text-text-secondary">v1.0.1</p></div>
   </>)
   return (<>
     <aside className="hidden md:flex w-56 bg-sidebar min-h-screen border-r border-border flex-col shrink-0">{nav}</aside>
