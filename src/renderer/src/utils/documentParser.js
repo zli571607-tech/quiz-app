@@ -5,11 +5,9 @@
  */
 
 import { extractRawText } from 'mammoth'
-import * as pdfjsLib from 'pdfjs-dist'
+// 用 legacy 版本，不需要 Web Worker，不会发生 ArrayBuffer 转移
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs'
 import JSZip from 'jszip'
-
-// 关闭 Worker，主线程运行 —— 彻底避免 ArrayBuffer detached 错误
-pdfjsLib.GlobalWorkerOptions.workerSrc = ''
 
 /**
  * 从 File 对象中解析文本
@@ -68,38 +66,30 @@ async function parseTxt(file) {
  * 解析 PDF 文件（使用 pdfjs-dist）
  */
 async function parsePdf(file) {
-  // 用 Object URL 方式加载，彻底避免 ArrayBuffer detached 问题
-  const url = URL.createObjectURL(file)
-  try {
-    const pdf = await pdfjsLib.getDocument({
-      url,
-      disableAutoFetch: true,
-      disableStream: true,
-    }).promise
+  // legacy 版无 Worker，ArrayBuffer 不会被转移
+  const arrayBuffer = await file.arrayBuffer()
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
 
-    const textParts = []
-    for (let i = 1; i <= pdf.numPages; i++) {
-      try {
-        const page = await pdf.getPage(i)
-        const textContent = await page.getTextContent()
-        const pageText = textContent.items
-          .map(item => item.str)
-          .filter(str => str && str.trim())
-          .join(' ')
-        if (pageText.trim()) textParts.push(pageText.trim())
-      } catch {
-        // 跳过损坏页
-      }
+  const textParts = []
+  for (let i = 1; i <= pdf.numPages; i++) {
+    try {
+      const page = await pdf.getPage(i)
+      const textContent = await page.getTextContent()
+      const pageText = textContent.items
+        .map(item => item.str)
+        .filter(str => str && str.trim())
+        .join(' ')
+      if (pageText.trim()) textParts.push(pageText.trim())
+    } catch {
+      // 跳过损坏页
     }
-
-    if (textParts.length === 0) {
-      throw new Error('PDF 中未找到可提取的文字（可能是扫描版图片PDF）')
-    }
-
-    return textParts.join('\n\n')
-  } finally {
-    URL.revokeObjectURL(url)
   }
+
+  if (textParts.length === 0) {
+    throw new Error('PDF 中未找到可提取的文字（可能是扫描版图片PDF）')
+  }
+
+  return textParts.join('\n\n')
 }
 
 /**
