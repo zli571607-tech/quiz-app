@@ -23,6 +23,9 @@ app.use((_req, res, next) => {
   next()
 })
 
+// 健康检查
+app.get('/api/health', (_req, res) => res.json({ ok: true }))
+
 app.use(express.json({ limit: '50mb' }))
 // 禁止缓存（确保每次加载最新版本）
 app.use((_req, res, next) => {
@@ -33,38 +36,34 @@ app.use((_req, res, next) => {
 })
 app.use(express.static(join(__dirname, 'dist')))
 
-// PDF 解析（pdf2json 替代 pdf-parse，避免 toHex bug）
-app.post('/api/parse-pdf', async (req, res) => {
-  const chunks = []
-  req.on('data', c => chunks.push(c))
-  req.on('end', async () => {
-    try {
-      const buffer = Buffer.concat(chunks)
-      const text = await new Promise(async (resolve, reject) => {
-        const { default: PDFParser } = await import('pdf2json')
-        const parser = new PDFParser()
-        parser.on('pdfParser_dataReady', (data) => {
-          const texts = []
-          data.Pages?.forEach(page => {
-            page.Texts?.forEach(t => {
-              const str = decodeURIComponent(t.R?.[0]?.T || '')
-              if (str.trim()) texts.push(str.trim())
-            })
-          })
-          resolve(texts.join(' '))
-        })
-        parser.on('pdfParser_dataError', (e) => reject(new Error(e?.parserError || '解析失败')))
-        parser.parseBuffer(buffer)
-      })
-      if (!text.trim()) {
-        res.json({ success: false, error: 'PDF中未找到文字内容，可能是扫描版' })
-      } else {
-        res.json({ success: true, content: text })
-      }
-    } catch (e) {
-      res.status(500).json({ error: 'PDF解析失败: ' + e.message })
+// PDF 解析（用 express.raw 接收二进制，pdf2json 解析）
+app.post('/api/parse-pdf', express.raw({ type: '*/*', limit: '50mb' }), async (req, res) => {
+  try {
+    if (!req.body || req.body.length === 0) {
+      return res.json({ success: false, error: '未收到文件数据' })
     }
-  })
+    const text = await new Promise(async (resolve, reject) => {
+      const { default: PDFParser } = await import('pdf2json')
+      const parser = new PDFParser()
+      parser.on('pdfParser_dataReady', (data) => {
+        const texts = []
+        data.Pages?.forEach(page => page.Texts?.forEach(t => {
+          const str = decodeURIComponent(t.R?.[0]?.T || '')
+          if (str.trim()) texts.push(str.trim())
+        }))
+        resolve(texts.join(' '))
+      })
+      parser.on('pdfParser_dataError', (e) => reject(new Error(e?.parserError || 'PDF解析失败')))
+      parser.parseBuffer(req.body)
+    })
+    if (!text.trim()) {
+      res.json({ success: false, error: 'PDF未找到文字（扫描图片PDF不支持）' })
+    } else {
+      res.json({ success: true, content: text })
+    }
+  } catch (e) {
+    res.status(500).json({ error: 'PDF解析失败: ' + e.message })
+  }
 })
 
 // 生成题目
