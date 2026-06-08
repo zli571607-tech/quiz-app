@@ -132,11 +132,16 @@ function HomePage() {
         <p className="text-xs text-text-secondary mb-3">导出的文件可在另一台设备（手机/电脑）导入，恢复全部题库和记录</p>
         <div className="flex flex-wrap gap-2">
           <button onClick={() => {
-            const data = JSON.stringify(localStorage)
-            const blob = new Blob([data], { type: 'application/json' })
+            // 正确读取 localStorage 所有数据
+            const data = {}
+            for (let i = 0; i < localStorage.length; i++) {
+              const key = localStorage.key(i)
+              data[key] = localStorage.getItem(key)
+            }
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
             const a = document.createElement('a')
             a.href = URL.createObjectURL(blob)
-            a.download = `刷题软件备份_${new Date().toLocaleDateString()}.json`
+            a.download = `刷题软件备份_${new Date().toLocaleDateString('zh-CN')}.json`
             a.click()
           }} className="bg-white border border-border px-4 py-2 rounded-btn text-sm hover:bg-gray-50 transition-colors">
             📤 导出备份
@@ -150,11 +155,15 @@ function HomePage() {
               reader.onload = () => {
                 try {
                   const data = JSON.parse(reader.result)
-                  if (confirm('导入将覆盖当前数据，确定继续？')) {
-                    Object.entries(data).forEach(([k, v]) => localStorage.setItem(k, v))
+                  if (typeof data !== 'object' || !data) { alert('备份文件格式错误'); return }
+                  if (confirm(`导入将覆盖当前 ${localStorage.length} 条数据，确定继续？`)) {
+                    Object.entries(data).forEach(([k, v]) => {
+                      if (typeof v === 'string') localStorage.setItem(k, v)
+                    })
+                    alert('导入成功！即将刷新页面')
                     window.location.reload()
                   }
-                } catch { alert('备份文件格式错误') }
+                } catch { alert('备份文件格式错误，无法解析') }
               }
               reader.readAsText(f)
               e.target.value = ''
