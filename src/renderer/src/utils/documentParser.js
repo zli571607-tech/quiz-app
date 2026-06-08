@@ -4,11 +4,10 @@
  */
 import { extractRawText } from 'mammoth'
 import * as pdfjsLib from 'pdfjs-dist'
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import JSZip from 'jszip'
 
-// 设置 Worker 路径
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
+// Worker 直接用文件路径（不依赖 Vite ?url 解析）
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('/pdf.worker.min.mjs', location.origin).href
 
 export async function parseDocument(file) {
   const fileName = file.name
@@ -30,22 +29,36 @@ export async function parseDocument(file) {
   }
 }
 
-// PDF → Uint8Array 传给 pdfjs，根本不碰 ArrayBuffer transfer
+// PDF → Uint8Array 传给 pdfjs，加超时保护
 async function parsePdf(file) {
-  // 读取为 ArrayBuffer，立即转为 Uint8Array 副本
   const buf = await file.arrayBuffer()
-  const data = new Uint8Array(buf.slice(0)) // slice 创建独立副本
+  const data = new Uint8Array(buf.slice(0))
 
-  const pdf = await pdfjsLib.getDocument({ data }).promise
-  const parts = []
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i)
-    const tc = await page.getTextContent()
-    const text = tc.items.map(it => it.str).filter(s => s.trim()).join(' ')
-    if (text.trim()) parts.push(text.trim())
-  }
-  if (parts.length === 0) throw new Error('PDF中无文字（可能为扫描图片）')
-  return parts.join('\n\n')
+  // 超时保护：60秒还没完成就报错
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('PDF解析超时，请尝试较小文件')), 60000)
+  )
+
+  const parseTask = (async () => {
+    const pdf = await pdfjsLib.getDocument({
+      data,
+      disableAutoFetch: true,
+      disableStream: true,
+      useWorkerFetch: false,
+    }).promise
+
+    const parts = []
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i)
+      const tc = await page.getTextContent()
+      const text = tc.items.map(it => it.str).filter(s => s.trim()).join(' ')
+      if (text.trim()) parts.push(text.trim())
+    }
+    if (parts.length === 0) throw new Error('PDF中无文字（可能为扫描图片）')
+    return parts.join('\n\n')
+  })()
+
+  return Promise.race([parseTask, timeout])
 }
 
 function parseTxt(file) {
