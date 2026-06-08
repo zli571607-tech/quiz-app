@@ -14,33 +14,15 @@ const DB_STORAGE_KEY = 'quiz_app_db'
 export async function initDatabase() {
   if (db) return db
 
-  // 尝试多种方式加载 WASM
-  const wasmSources = [
-    '/sql-wasm.wasm',
-    './sql-wasm.wasm',
-    'sql-wasm.wasm',
-  ]
-
-  let lastError = null
-
-  for (const wasmPath of wasmSources) {
-    try {
-      SQL = await initSqlJs({
-        locateFile: () => wasmPath,
-      })
-      lastError = null
-      break
-    } catch (err) {
-      lastError = err
-      console.warn(`sql.js WASM 加载失败 (${wasmPath}):`, err.message)
-    }
-  }
-
-  if (lastError || !SQL) {
-    throw new Error(
-      'SQLite 引擎加载失败，请检查网络连接后刷新页面。' +
-      (lastError ? ' 错误详情：' + lastError.message : '')
-    )
+  // 用页面根目录的相对路径加载 WASM（适配任何子目录部署）
+  try {
+    const wasmPath = import.meta.env.BASE_URL + 'sql-wasm.wasm'
+    SQL = await initSqlJs({
+      locateFile: () => wasmPath,
+    })
+  } catch (err) {
+    console.error('sql.js 初始化失败:', err)
+    throw new Error('数据库引擎加载失败：' + err.message)
   }
 
   // 尝试从 localStorage 恢复，加多层保护
