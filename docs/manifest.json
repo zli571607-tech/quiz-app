@@ -1,0 +1,10 @@
+{
+  "name": "刷题软件",
+  "short_name": "刷题",
+  "description": "AI驱动的刷题练习工具",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#3B82F6",
+  "icons": []
+}
