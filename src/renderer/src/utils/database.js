@@ -14,11 +14,14 @@ const DB_STORAGE_KEY = 'quiz_app_db'
 export async function initDatabase() {
   if (db) return db
 
-  // 加载 sql.js WASM（文件名必须匹配 sql.js 期望的 sql-wasm-browser.wasm）
+  // 手动下载 WASM 二进制，直接传给 sql.js，绕开内部加载逻辑
   try {
-    SQL = await initSqlJs({
-      locateFile: (file) => import.meta.env.BASE_URL + 'sql-wasm-browser.wasm',
-    })
+    const wasmUrl = import.meta.env.BASE_URL + 'sql-wasm-browser.wasm'
+    const response = await fetch(wasmUrl)
+    if (!response.ok) throw new Error(`WASM 下载失败 (HTTP ${response.status})`)
+    const wasmBinary = await response.arrayBuffer()
+
+    SQL = await initSqlJs({ wasmBinary })
   } catch (err) {
     console.error('sql.js 初始化失败:', err)
     throw new Error('数据库引擎加载失败：' + err.message)
