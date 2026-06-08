@@ -7,11 +7,9 @@
 import { extractRawText } from 'mammoth'
 import * as pdfjsLib from 'pdfjs-dist'
 import JSZip from 'jszip'
-// Vite 会把这个路径替换为构建后的哈希文件名
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url'
 
-// 设置 PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
+// 关闭 Worker，主线程运行 —— 彻底避免 ArrayBuffer detached 错误
+pdfjsLib.GlobalWorkerOptions.workerSrc = ''
 
 /**
  * 从 File 对象中解析文本
