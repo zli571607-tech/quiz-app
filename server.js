@@ -26,17 +26,38 @@ app.use((_req, res, next) => {
 app.use(express.json({ limit: '50mb' }))
 app.use(express.static(join(__dirname, 'dist')))
 
-// PDF 解析
+// PDF 解析（pdf2json 替代 pdf-parse，避免 toHex bug）
 app.post('/api/parse-pdf', async (req, res) => {
-  try {
-    const pdfParse = (await import('pdf-parse')).default
-    const chunks = []
-    req.on('data', c => chunks.push(c))
-    req.on('end', async () => {
-      const data = await pdfParse(Buffer.concat(chunks))
-      res.json({ success: true, content: data.text })
-    })
-  } catch (e) { res.status(500).json({ error: 'PDF解析失败: ' + e.message }) }
+  const chunks = []
+  req.on('data', c => chunks.push(c))
+  req.on('end', async () => {
+    try {
+      const buffer = Buffer.concat(chunks)
+      const text = await new Promise(async (resolve, reject) => {
+        const { default: PDFParser } = await import('pdf2json')
+        const parser = new PDFParser()
+        parser.on('pdfParser_dataReady', (data) => {
+          const texts = []
+          data.Pages?.forEach(page => {
+            page.Texts?.forEach(t => {
+              const str = decodeURIComponent(t.R?.[0]?.T || '')
+              if (str.trim()) texts.push(str.trim())
+            })
+          })
+          resolve(texts.join(' '))
+        })
+        parser.on('pdfParser_dataError', (e) => reject(new Error(e?.parserError || '解析失败')))
+        parser.parseBuffer(buffer)
+      })
+      if (!text.trim()) {
+        res.json({ success: false, error: 'PDF中未找到文字内容，可能是扫描版' })
+      } else {
+        res.json({ success: true, content: text })
+      }
+    } catch (e) {
+      res.status(500).json({ error: 'PDF解析失败: ' + e.message })
+    }
+  })
 })
 
 // 生成题目

@@ -24,28 +24,40 @@ export default function apiPlugin() {
         res.end(JSON.stringify({ ok: true }))
       })
 
-      // PDF 解析（服务端 pdf-parse，稳定可靠）
+      // PDF 解析（pdf2json，避免 pdf-parse 的 toHex bug）
       server.middlewares.use('/api/parse-pdf', async (req, res) => {
         if (req.method !== 'POST') { res.writeHead(405); res.end(); return }
-        try {
-          const chunks = []
-          req.on('data', c => chunks.push(c))
-          req.on('end', async () => {
-            try {
-              const buffer = Buffer.concat(chunks)
-              const pdfParse = (await import('pdf-parse')).default
-              const data = await pdfParse(buffer)
+        const chunks = []
+        req.on('data', c => chunks.push(c))
+        req.on('end', async () => {
+          try {
+            const buffer = Buffer.concat(chunks)
+            const text = await new Promise(async (resolve, reject) => {
+              const { default: PDFParser } = await import('pdf2json')
+              const parser = new PDFParser()
+              parser.on('pdfParser_dataReady', (data) => {
+                const texts = []
+                data.Pages?.forEach(page => page.Texts?.forEach(t => {
+                  const str = decodeURIComponent(t.R?.[0]?.T || '')
+                  if (str.trim()) texts.push(str.trim())
+                }))
+                resolve(texts.join(' '))
+              })
+              parser.on('pdfParser_dataError', (e) => reject(new Error(e?.parserError || '解析失败')))
+              parser.parseBuffer(buffer)
+            })
+            if (!text.trim()) {
               res.writeHead(200, { 'Content-Type': 'application/json' })
-              res.end(JSON.stringify({ success: true, content: data.text }))
-            } catch (e) {
-              res.writeHead(500, { 'Content-Type': 'application/json' })
-              res.end(JSON.stringify({ error: 'PDF解析失败: ' + e.message }))
+              res.end(JSON.stringify({ success: false, error: 'PDF中未找到文字' }))
+            } else {
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ success: true, content: text }))
             }
-          })
-        } catch (err) {
-          res.writeHead(500, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ error: err.message }))
-        }
+          } catch (e) {
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'PDF解析失败: ' + e.message }))
+          }
+        })
       })
 
       server.middlewares.use('/api/generate', async (req, res) => {
